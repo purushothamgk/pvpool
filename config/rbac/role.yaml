@@ -1,0 +1,52 @@
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - '*'
+- apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - '*'
+- apiGroups:
+  - apps
+  resources:
+  - statefulsets
+  verbs:
+  - '*'
+- apiGroups:
+  - pvpool.noobaa.com
+  resources:
+  - pvpools
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - pvpool.noobaa.com
+  resources:
+  - pvpools/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - pvpool.noobaa.com
+  resources:
+  - pvpools/status
+  verbs:
+  - get
+  - patch
+  - update

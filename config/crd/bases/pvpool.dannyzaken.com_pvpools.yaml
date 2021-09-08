@@ -1,0 +1,118 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.4.1
+  creationTimestamp: null
+  name: pvpools.pvpool.noobaa.com
+spec:
+  group: pvpool.noobaa.com
+  names:
+    kind: PvPool
+    listKind: PvPoolList
+    plural: pvpools
+    singular: pvpool
+  scope: Namespaced
+  versions:
+    - additionalPrinterColumns:
+        - description: Number of PVs in the pool
+          jsonPath: .spec.numPVs
+          name: Number of PVs
+          type: number
+        - description: Min PV size in GB
+          jsonPath: .spec.pvSizeGB
+          name: PV Size GB
+          type: number
+        - description: Phase
+          jsonPath: .status.phase
+          name: Phase
+          type: string
+      name: v1
+      schema:
+        openAPIV3Schema:
+          description: PvPool is the Schema for the pvpools API
+          properties:
+            apiVersion:
+              description:
+                "APIVersion defines the versioned schema of this representation
+                of an object. Servers should convert recognized schemas to the latest
+                internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources"
+              type: string
+            kind:
+              description:
+                "Kind is a string value representing the REST resource this
+                object represents. Servers may infer this from the endpoint the client
+                submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds"
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: PvPoolSpec defines the desired state of PvPool
+              properties:
+                image:
+                  description: Image is the container image of the pv pod
+                  type: string
+                numPVs:
+                  description: NumPVs is the number of PV pods that should be created
+                  format: int32
+                  type: integer
+                pvSizeGB:
+                  description: pvSizeGB represents the volume size in GB.
+                  format: int32
+                  type: integer
+                storageClass:
+                  description:
+                    StorageClass is the name of the storage class to use
+                    for the PV's
+                  type: string
+              required:
+                - image
+                - numPVs
+                - pvSizeGB
+              type: object
+            status:
+              description: PvPoolStatus defines the observed state of PvPool
+              properties:
+                countByState:
+                  additionalProperties:
+                    format: int32
+                    type: integer
+                  type: object
+                phase:
+                  description:
+                    PvPoolPhase is a string enum type for the reconcile phase
+                    of a pv pool
+                  type: string
+                podsInfo:
+                  items:
+                    description: PvPodSInfo indicates the status of a PV pod
+                    properties:
+                      podName:
+                        type: string
+                      podStatus:
+                        description:
+                          PvPodStatus is a string enum type for PvPodStatus
+                          reconcile status
+                        type: string
+                    required:
+                      - podName
+                      - podStatus
+                    type: object
+                  type: array
+              required:
+                - countByState
+                - phase
+                - podsInfo
+              type: object
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

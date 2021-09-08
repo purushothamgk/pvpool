@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: storage-pool-srv
+spec:
+  type: ClusterIP
+  selector:
+    pv-pool: storage-pool
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: storage-agent-api
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: storage-pool
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      pv-pool: storage-pool
+  serviceName: storage-pool-srv
+  template:
+    metadata:
+      labels:
+        pv-pool: storage-pool
+    spec:
+      containers:
+        - name: storage-agent
+          image: storage-agent:1
+          env:
+            - name: PV_PATH
+              value: /data
+          command:
+            - node
+            - storage-agent.js
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+            limits:
+              cpu: 100m
+              memory: 100Mi
+          volumeMounts:
+            - name: vol
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: vol
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi

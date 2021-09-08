@@ -1,0 +1,24 @@
+# permissions for end users to edit pvpools.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pvpool-editor-role
+rules:
+  - apiGroups:
+      - pvpool.noobaa.com
+    resources:
+      - pvpools
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - pvpool.noobaa.com
+    resources:
+      - pvpools/status
+    verbs:
+      - get

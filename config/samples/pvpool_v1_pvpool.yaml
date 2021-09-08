@@ -1,0 +1,9 @@
+apiVersion: pvpool.noobaa.com/v1
+kind: PvPool
+metadata:
+  name: pvpool-1
+  namespace: pv-pool-operator-system
+spec:
+  image: storage-agent:1
+  numPVs: 3
+  pvSizeGB: 5
