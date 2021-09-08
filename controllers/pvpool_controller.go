@@ -407,6 +407,8 @@ func (r *PvPoolReconciler) collectPodsStatus(pvpStatus *pvpoolv1.PvPoolStatus, l
 		}
 		pvpStatus.PodsInfo = append(pvpStatus.PodsInfo, pvpoolv1.PvPodSInfo{PodName: pod.Name, PodStatus: state})
 		pvpStatus.CountByState[state]++
+		//Used storage in percentage. 
+		pvpStatus.Used = (agentStatus.Used / agentStatus.Total) * 100
 	}
 
 	return nil
