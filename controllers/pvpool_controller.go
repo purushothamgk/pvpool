@@ -24,6 +24,8 @@ import (
 	"net/http"
 	"reflect"
 	"time"
+	"strconv"
+	"strings"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -174,7 +176,7 @@ func (r *PvPoolReconciler) reconcilePvPool(pvp *pvpoolv1.PvPool) (*pvpoolv1.PvPo
 		return newStatus, err
 	}
 
-	err = r.reconcilePvPoolStatefulset(pvp, sts, srv, newStatus)
+	err = r.reconcilePvPoolStatefulset(pvp, sts, srv, newStatus, podList)
 	if err != nil {
 		// Failed to reconcile the PvPool Statefulset
 		return newStatus, err
@@ -357,19 +359,24 @@ func (r *PvPoolReconciler) newStatefulsetForPvPool(pvp *pvpoolv1.PvPool) *appsv1
 	return pvPoolSTS
 }
 
-func (r *PvPoolReconciler) reconcilePvPoolStatefulset(pvp *pvpoolv1.PvPool, sts *appsv1.StatefulSet, srv *corev1.Service, newStatus *pvpoolv1.PvPoolStatus) error {
+func (r *PvPoolReconciler) reconcilePvPoolStatefulset(pvp *pvpoolv1.PvPool, sts *appsv1.StatefulSet, srv *corev1.Service, newStatus *pvpoolv1.PvPoolStatus, list *corev1.PodList) error {
 
 	r.Log.Info("reconciling pvpool statefulset ", "statefulset name", sts.Name)
 
 	// the statefulset exists. reconcile the properties in the PV pool CR
 	shouldUpdate := false
-
-	if pvp.Spec.NumPVs != *sts.Spec.Replicas {
+	if *sts.Spec.Replicas > pvp.Spec.NumPVs {
 		shouldUpdate = true
 		// set the number of replicas to the number of PVs
 		sts.Spec.Replicas = &pvp.Spec.NumPVs
 		// set the phase to "Scaling"
 		newStatus.Phase = pvpoolv1.PvPoolPhaseScaling
+
+	} else if *sts.Spec.Replicas < pvp.Spec.NumPVs {
+		// Start scaling down
+		r.Log.Info("Start scaling down ", "statefulset name", sts.Name)
+		r.decommissionRequiredPods(list, sts)
+
 	} else if newStatus.CountByState[pvpoolv1.PvPodStatusReady] == pvp.Spec.NumPVs {
 		// in this case the sts is reconciled (numPvs == sts.Spec.Replicas) and all pods are ready
 		// mark the status as ready
@@ -393,22 +400,30 @@ func (r *PvPoolReconciler) reconcilePvPoolStatefulset(pvp *pvpoolv1.PvPool, sts 
 
 }
 
+func (r *PvPoolReconciler) percent(part int64, all int64) string {
+	p := ((float64(part) * float64(100)) / float64(all))
+	return fmt.Sprintf("%.2f", p)
+}
+
 func (r *PvPoolReconciler) collectPodsStatus(pvpStatus *pvpoolv1.PvPoolStatus, list *corev1.PodList) error {
 
 	for _, pod := range list.Items {
 
+		r.Log.Info("collectPodsStatus", "status", pod.Name)
 		state := pvpoolv1.PvPodStatus(pvpoolv1.PvPodStatusUnknown)
 		agentStatus, err := r.getStorageAgentStatus(r.getPodURL(pod.Name, pod.Spec.Subdomain, pod.Namespace))
 		if err != nil {
 			r.Log.Info("got error when trying to get storage agent status. setting the state to unknown", "pod name", pod.Name, "error", err)
+			return err
 		} else {
 			state = pvpoolv1.PvPodStatus(agentStatus.State)
-			r.Log.Info("got agentStatus", "status", agentStatus)
+			r.Log.Info("pv got agentStatus", "status", agentStatus)
 		}
 		pvpStatus.PodsInfo = append(pvpStatus.PodsInfo, pvpoolv1.PvPodSInfo{PodName: pod.Name, PodStatus: state})
 		pvpStatus.CountByState[state]++
-		//Used storage in percentage. 
-		pvpStatus.Used = (agentStatus.Used / agentStatus.Total) * 100
+		//Used storage in percentage.
+		pvpStatus.Used = r.percent(agentStatus.Used, agentStatus.Total)
+		r.Log.Info("Used storage in percentage", "Used", pvpStatus.Used)
 	}
 
 	return nil
@@ -492,5 +507,28 @@ func (r *PvPoolReconciler) decommissionStorageAgent(url string) error {
 		defer res.Body.Close()
 	}
 
+	return nil
+}
+
+
+func (r *PvPoolReconciler) getInstanceNumberString(p string, s string) (int, error) {
+	numStr := strings.TrimPrefix(p, s + "-")
+	return strconv.Atoi(numStr)
+}
+
+func (r *PvPoolReconciler) decommissionRequiredPods(list *corev1.PodList, sts *appsv1.StatefulSet ) error {
+
+	for _, pod := range list.Items {
+		num, err := r.getInstanceNumberString(pod.Name, sts.Name)
+		if err != nil {
+			r.Log.Info("Pod has a wrong instance number", pod.Name, err)
+			continue
+		}
+		if int32(num) >= *sts.Spec.Replicas {
+			url := r.getPodURL(pod.Name, pod.Spec.Subdomain, pod.Namespace)
+			r.Log.Info("decommissionRequiredPods", "status", pod.Name)
+			r.decommissionStorageAgent(url)
+		}
+	}
 	return nil
 }

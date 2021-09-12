@@ -97,10 +97,14 @@ spec:
                   - podStatus
                   type: object
                 type: array
+              used:
+                description: Used storage percentage of the pool
+                type: string
             required:
             - countByState
             - phase
             - podsInfo
+            - used
             type: object
         type: object
     served: true
