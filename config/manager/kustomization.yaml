@@ -13,4 +13,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: puruscm/pv-pool-operator
-  newTag: "2"
+  newTag: v7

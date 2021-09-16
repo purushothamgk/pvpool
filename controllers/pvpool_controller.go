@@ -361,21 +361,22 @@ func (r *PvPoolReconciler) newStatefulsetForPvPool(pvp *pvpoolv1.PvPool) *appsv1
 
 func (r *PvPoolReconciler) reconcilePvPoolStatefulset(pvp *pvpoolv1.PvPool, sts *appsv1.StatefulSet, srv *corev1.Service, newStatus *pvpoolv1.PvPoolStatus, list *corev1.PodList) error {
 
-	r.Log.Info("reconciling pvpool statefulset ", "statefulset name", sts.Name)
-
+	r.Log.Info("reconcilePvPoolStatefulset ", "statefulset name", sts.Name)
+	
 	// the statefulset exists. reconcile the properties in the PV pool CR
 	shouldUpdate := false
-	if *sts.Spec.Replicas > pvp.Spec.NumPVs {
+	if pvp.Spec.NumPVs >= *sts.Spec.Replicas && newStatus.CountByState[pvpoolv1.PvPodStatusReady] != pvp.Spec.NumPVs {
+		r.Log.Info("Start scaling ", "statefulset name", sts.Name)
 		shouldUpdate = true
 		// set the number of replicas to the number of PVs
 		sts.Spec.Replicas = &pvp.Spec.NumPVs
 		// set the phase to "Scaling"
 		newStatus.Phase = pvpoolv1.PvPoolPhaseScaling
 
-	} else if *sts.Spec.Replicas < pvp.Spec.NumPVs {
+	} else if pvp.Spec.NumPVs < *sts.Spec.Replicas {
 		// Start scaling down
 		r.Log.Info("Start scaling down ", "statefulset name", sts.Name)
-		r.decommissionRequiredPods(list, sts)
+		r.decommissionRequiredPods(pvp, sts, list)
 
 	} else if newStatus.CountByState[pvpoolv1.PvPodStatusReady] == pvp.Spec.NumPVs {
 		// in this case the sts is reconciled (numPvs == sts.Spec.Replicas) and all pods are ready
@@ -400,9 +401,9 @@ func (r *PvPoolReconciler) reconcilePvPoolStatefulset(pvp *pvpoolv1.PvPool, sts 
 
 }
 
-func (r *PvPoolReconciler) percent(part int64, all int64) string {
+func (r *PvPoolReconciler) percent(part int64, all int64) int {
 	p := ((float64(part) * float64(100)) / float64(all))
-	return fmt.Sprintf("%.2f", p)
+	return int(p)
 }
 
 func (r *PvPoolReconciler) collectPodsStatus(pvpStatus *pvpoolv1.PvPoolStatus, list *corev1.PodList) error {
@@ -516,7 +517,7 @@ func (r *PvPoolReconciler) getInstanceNumberString(p string, s string) (int, err
 	return strconv.Atoi(numStr)
 }
 
-func (r *PvPoolReconciler) decommissionRequiredPods(list *corev1.PodList, sts *appsv1.StatefulSet ) error {
+func (r *PvPoolReconciler) decommissionRequiredPods(pvp *pvpoolv1.PvPool, sts *appsv1.StatefulSet,list *corev1.PodList ) error {
 
 	for _, pod := range list.Items {
 		num, err := r.getInstanceNumberString(pod.Name, sts.Name)
@@ -524,10 +525,35 @@ func (r *PvPoolReconciler) decommissionRequiredPods(list *corev1.PodList, sts *a
 			r.Log.Info("Pod has a wrong instance number", pod.Name, err)
 			continue
 		}
-		if int32(num) >= *sts.Spec.Replicas {
+
+		state := pvpoolv1.PvPodStatus(pvpoolv1.PvPodStatusUnknown)
+		agentStatus, err := r.getStorageAgentStatus(r.getPodURL(pod.Name, pod.Spec.Subdomain, pod.Namespace))
+		if err != nil {
+			r.Log.Info("got error when trying to get storage agent status. setting the state to unknown", "pod name", pod.Name, "error", err)
+			return err
+		} else {
+			state = pvpoolv1.PvPodStatus(agentStatus.State)
+			r.Log.Info("pv got agentStatus", "status", agentStatus)
+		}
+	
+		if int32(num) >= pvp.Spec.NumPVs && state != pvpoolv1.PvPodStatusDecommissioning {
 			url := r.getPodURL(pod.Name, pod.Spec.Subdomain, pod.Namespace)
 			r.Log.Info("decommissionRequiredPods", "status", pod.Name)
-			r.decommissionStorageAgent(url)
+			err := r.decommissionStorageAgent(url)
+			if err != nil {
+				r.Log.Info("got error when trying to decommision. setting the state to unknown", "pod name", pod.Name, "error", err)
+				return err
+			}
+
+
+			podsInfo := pvp.Status.PodsInfo
+			for _, pInfo := range podsInfo {
+				req_num, _ := r.getInstanceNumberString(pInfo.PodName, sts.Name)
+				if num == req_num {
+					decomm_state := pvpoolv1.PvPodStatus(pvpoolv1.PvPodStatusDecommissioned)
+					pInfo.PodStatus = decomm_state
+				}
+			}
 		}
 	}
 	return nil

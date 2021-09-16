@@ -6,4 +6,4 @@ metadata:
 spec:
   image: puruscm/storage-agent:1
   numPVs: 3
-  pvSizeGB: 5
+  pvSizeGB: 1

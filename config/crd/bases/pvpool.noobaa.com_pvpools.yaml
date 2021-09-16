@@ -99,7 +99,7 @@ spec:
                 type: array
               used:
                 description: Used storage percentage of the pool
-                type: string
+                type: integer
             required:
             - countByState
             - phase

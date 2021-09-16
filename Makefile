@@ -78,7 +78,7 @@ docker-build: test
 	docker build -t ${IMG} .
 
 docker-build-storage-agent:
-	docker build -f storage-agent/Dockerfile ./storage-agent -t storage-agent:1
+	docker build -f storage-agent/Dockerfile ./storage-agent -t puruscm/storage-agent:1
 
 # Push the docker image
 docker-push:
